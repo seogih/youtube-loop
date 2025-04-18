@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "YouTube Bookmarker",
+  "version": "1.1",
+  "description": "유튜브 영상에서 북마크를 추가하고 구간 반복 재생을 할 수 있습니다.",
+  "permissions": ["storage", "scripting", "tabs", "activeTab"],
+  "host_permissions": ["https://www.youtube.com/*"],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.youtube.com/*"],
+      "js": ["content.js"]
+    }
+  ]
+}
