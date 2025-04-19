@@ -6,7 +6,13 @@
   "permissions": ["storage", "scripting", "tabs", "activeTab"],
   "host_permissions": ["https://www.youtube.com/*"],
   "action": {
-    "default_popup": "popup.html"
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/yl_active_16.png",
+      "32": "icons/yl_active_32.png",
+      "48": "icons/yl_active_48.png",
+      "128": "icons/yl_active_128.png"
+    }
   },
   "content_scripts": [
     {

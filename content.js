@@ -17,8 +17,52 @@ let wasAutoPaused = false;
 let currentInterval = null;
 let adTimerOverlay = null;
 let wasMutedBeforeAd = false;
+let video = null;
 
-const video = document.querySelector('video');
+// const video = document.querySelector('video');
+
+// ✅ 초기 enabled 상태 가져오기
+chrome.storage.local.get(['enabled'], (result) => {
+  enabled = result.enabled ?? true;
+  updateOverlay();
+  updateSpeedOverlay();
+});
+
+// ✅ enabled 상태 변경 감지
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.enabled) {
+    enabled = changes.enabled.newValue;
+    updateOverlay();
+    updateSpeedOverlay();
+  }
+});
+
+// ✅ video element를 기다리는 함수
+function waitForVideoAndInitialize() {
+  video = document.querySelector('video');
+  if (video) {
+    setupEventListeners();
+    loadBookmarks();
+    updateSpeedOverlay();
+    setInterval(autoSkipAdsAndShowTimer, 500);
+    window.addEventListener('resize', () => {
+      updateSpeedOverlay();
+      updateBottomOverlayPosition();
+    });
+    document.addEventListener('fullscreenchange', () => {
+      updateSpeedOverlay();
+      updateBottomOverlayPosition();
+    });
+    document.addEventListener('keydown', handleKeyDown);
+  } else {
+    setTimeout(waitForVideoAndInitialize, 500);
+  }
+}
+
+// ✅ video 이벤트 연결
+function setupEventListeners() {
+  video.addEventListener('timeupdate', updateOverlay);
+}
 
 // ----------------------
 // 광고 스킵 기능
@@ -426,15 +470,25 @@ function handleKeyDown(e) {
 // ----------------------
 // URL 변경 감지
 // ----------------------
+// let lastUrl = location.href;
+// new MutationObserver(() => {
+//   const currentUrl = location.href;
+//   if (currentUrl !== lastUrl) {
+//     lastUrl = currentUrl;
+//     setTimeout(() => {
+//       loadBookmarks();
+//       updateSpeedOverlay();
+//       updateBottomOverlayPosition();
+//     }, 1000);
+//   }
+// }).observe(document, { subtree: true, childList: true });
 let lastUrl = location.href;
 new MutationObserver(() => {
   const currentUrl = location.href;
   if (currentUrl !== lastUrl) {
     lastUrl = currentUrl;
     setTimeout(() => {
-      loadBookmarks();
-      updateSpeedOverlay();
-      updateBottomOverlayPosition();
+      waitForVideoAndInitialize();  // <-- 북마크만 다시 불러오는 게 아니라, 전체 재초기화
     }, 1000);
   }
 }).observe(document, { subtree: true, childList: true });
@@ -442,16 +496,17 @@ new MutationObserver(() => {
 // ----------------------
 // 초기화
 // ----------------------
-document.addEventListener('keydown', handleKeyDown);
-video.addEventListener('timeupdate', updateOverlay);
-loadBookmarks();
-updateSpeedOverlay();
-setInterval(autoSkipAdsAndShowTimer, 500);
-window.addEventListener('resize', () => {
-  updateSpeedOverlay();
-  updateBottomOverlayPosition();
-});
-document.addEventListener('fullscreenchange', () => {
-  updateSpeedOverlay();
-  updateBottomOverlayPosition();
-});
+// document.addEventListener('keydown', handleKeyDown);
+// video.addEventListener('timeupdate', updateOverlay);
+// loadBookmarks();
+// updateSpeedOverlay();
+// setInterval(autoSkipAdsAndShowTimer, 500);
+// window.addEventListener('resize', () => {
+//   updateSpeedOverlay();
+//   updateBottomOverlayPosition();
+// });
+// document.addEventListener('fullscreenchange', () => {
+//   updateSpeedOverlay();
+//   updateBottomOverlayPosition();
+// });
+waitForVideoAndInitialize();

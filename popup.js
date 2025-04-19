@@ -1,30 +1,40 @@
 document.addEventListener('DOMContentLoaded', () => {
-  const bookmarkList = document.getElementById('bookmarkList');
-  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-    const url = new URL(tabs[0].url);
-    const videoId = new URLSearchParams(url.search).get('v');
-    chrome.storage.local.get([videoId], (result) => {
-      const bookmarks = result[videoId] || [];
-      bookmarks.sort((a, b) => a - b);
-      bookmarks.forEach((time) => {
-        const li = document.createElement('li');
-        li.textContent = new Date(time * 1000).toISOString().substr(11, 8);
-        li.style.cursor = 'pointer';
-        li.onclick = () => {
-          chrome.scripting.executeScript({
-            target: { tabId: tabs[0].id },
-            func: (t) => {
-              const video = document.querySelector('video');
-              if (video) {
-                video.currentTime = t;
-                video.play();
-              }
-            },
-            args: [time]
-          });
-        };
-        bookmarkList.appendChild(li);
+  const ylIcon = document.getElementById('ylIcon');
+
+  // 초기 상태 설정
+  chrome.storage.local.get(['enabled'], (result) => {
+    const enabled = result.enabled ?? true;
+    updateIcon(enabled);
+  });
+
+  // 아이콘 클릭 시 토글
+  ylIcon.addEventListener('click', () => {
+    chrome.storage.local.get(['enabled'], (result) => {
+      const current = result.enabled ?? true;
+      const newEnabled = !current;
+      chrome.storage.local.set({ enabled: newEnabled }, () => {
+        updateIcon(newEnabled);
+
+        // 동시에 툴바 아이콘도 변경
+        chrome.action.setIcon({
+          path: newEnabled ? {
+            "16": "icons/yl_active_16.png",
+            "32": "icons/yl_active_32.png",
+            "48": "icons/yl_active_48.png",
+            "128": "icons/yl_active_128.png"
+          } : {
+            "16": "icons/yl_inactive_16.png",
+            "32": "icons/yl_inactive_32.png",
+            "48": "icons/yl_inactive_48.png",
+            "128": "icons/yl_inactive_128.png"
+          }
+        });
       });
     });
   });
+
+  // 아이콘 업데이트 함수
+  function updateIcon(enabled) {
+    ylIcon.src = enabled ? 'icons/yl_active_32.png' : 'icons/yl_inactive_32.png';
+  }
 });
