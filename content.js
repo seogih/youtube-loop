@@ -6,6 +6,11 @@ let wasAutoPaused = false;
 let bottomOverlayVisible = false;
 let bottomOverlay = null;
 let currentInterval = null;
+let adSkipInterval = null;
+let adTimerOverlay = null;
+let adDarkOverlay = null;
+let skipAttempted = false;
+let wasMutedBeforeAd = false;
 
 const video = document.querySelector('video');
 
@@ -52,23 +57,9 @@ function clearBookmarks() {
   updateOverlay();
 }
 
-// function playSegment(startIndex, stopIndex = startIndex + 1) {
-//   if (startIndex < 0 || stopIndex >= bookmarks.length) return;
-//   video.currentTime = bookmarks[startIndex];
-//   video.play();
-//   const end = bookmarks[stopIndex];
-//   const interval = setInterval(() => {
-//     if (video.currentTime >= end) {
-//       video.pause();
-//       wasAutoPaused = true;
-//       clearInterval(interval);
-//     }
-//   }, 100);
-// }
 function playSegment(startIndex, stopIndex = startIndex + 1) {
   if (startIndex < 0 || stopIndex >= bookmarks.length) return;
 
-  // 기존 interval이 살아있으면 지우기
   if (currentInterval !== null) {
     clearInterval(currentInterval);
     currentInterval = null;
@@ -201,25 +192,24 @@ function handleKeyDown(e) {
     case 'e':
       clearBookmarks();
       break;
+    case 'h':
+      if (bookmarks.length > 0) {
+        video.currentTime = bookmarks[0];
+        video.pause();
+      }
+      break;
     case 'x':
-      // e.preventDefault();
-      // const prev = [...bookmarks].reverse().find(t => t < video.currentTime);
-      // if (prev !== undefined) {
-      //   const index = bookmarks.findIndex(t => t === prev);
-      //   playSegment(index);
-      // }
-      // break;
       e.preventDefault();
       if (video.paused) {
-        // 비디오가 멈춰있으면 이전 북마크 재생
         const prev = [...bookmarks].reverse().find(t => t < video.currentTime);
         if (prev !== undefined) {
           const index = bookmarks.findIndex(t => t === prev);
           playSegment(index);
+        } else if (Math.abs(video.currentTime - bookmarks[0]) < 1) {
+          playSegment(0);
         }
       } else {
-        // 비디오가 재생 중이면 다음 북마크 재생
-        const next = bookmarks.find(t => t > video.currentTime);
+        const next = bookmarks.find(t => t - video.currentTime > -0.2);
         if (next !== undefined) {
           const index = bookmarks.findIndex(t => t === next);
           playSegment(index);
@@ -250,7 +240,120 @@ function handleKeyDown(e) {
   }
 }
 
-// 유튜브 URL 변경 감지
+// 광고 관련 기능
+
+function createDarkOverlay() {
+  if (!adDarkOverlay) {
+    adDarkOverlay = document.createElement('div');
+    Object.assign(adDarkOverlay.style, {
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      width: '100%',
+      height: '100%',
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      zIndex: 9998,
+      pointerEvents: 'none',
+    });
+    adDarkOverlay.id = 'ad-dark-overlay';
+    document.body.appendChild(adDarkOverlay);
+  }
+}
+
+function removeDarkOverlay() {
+  if (adDarkOverlay) {
+    adDarkOverlay.remove();
+    adDarkOverlay = null;
+  }
+}
+
+function isAdPlaying() {
+  return document.querySelector('.ytp-ad-player-overlay') !== null
+      || document.querySelector('.ad-showing') !== null;
+}
+
+function forceSkipAd() {
+  const adOverlay = document.querySelector('.ytp-ad-player-overlay');
+  const adContainer = document.querySelector('.ad-showing');
+
+  if ((adOverlay || adContainer) && video.duration > 0 && !isNaN(video.duration)) {
+    if (!skipAttempted) {
+      console.log('광고 감지: 강제 스킵 시도!');
+      try {
+        if (video.currentTime < video.duration - 2) {
+          video.currentTime = video.duration;
+        }
+      } catch (e) {
+        console.error('광고 강제 스킵 실패', e);
+      }
+      skipAttempted = true;
+    }
+  } else {
+    skipAttempted = false;
+  }
+}
+
+function autoSkipAdsAndShowTimer() {
+  const adTextElement = document.querySelector('.ytp-ad-text');
+  const skipButton = document.querySelector('.ytp-ad-skip-button');
+
+  if (isAdPlaying()) {
+    if (!adTimerOverlay) {
+      adTimerOverlay = document.createElement('div');
+      Object.assign(adTimerOverlay.style, {
+        position: 'fixed',
+        top: '10%',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        backgroundColor: 'rgba(0,0,0,0.7)',
+        color: 'white',
+        padding: '10px 20px',
+        borderRadius: '10px',
+        fontSize: '20px',
+        zIndex: 9999,
+        pointerEvents: 'none',
+      });
+      adTimerOverlay.id = 'ad-timer-overlay';
+      document.body.appendChild(adTimerOverlay);
+    }
+
+    let adTimeText = '';
+    if (adTextElement) {
+      adTimeText = adTextElement.innerText;
+    }
+    adTimerOverlay.textContent = `광고 진행 중... ${adTimeText} (곧 스킵됩니다)`;
+
+    createDarkOverlay();
+
+    if (!video.muted) {
+      wasMutedBeforeAd = false;
+      video.muted = true;
+      console.log('광고 감지: 비디오 음소거됨');
+    }
+
+    if (skipButton && skipButton.offsetParent !== null) {
+      skipButton.click();
+      console.log('광고 건너뛰기 클릭됨!');
+    }
+
+    forceSkipAd();
+  } else {
+    if (adTimerOverlay) {
+      adTimerOverlay.remove();
+      adTimerOverlay = null;
+    }
+    removeDarkOverlay();
+
+    if (video.muted && !wasMutedBeforeAd) {
+      video.muted = false;
+      console.log('광고 종료: 비디오 음소거 해제');
+    }
+
+    skipAttempted = false;
+  }
+}
+
+// URL 변경 감지
 let lastUrl = location.href;
 new MutationObserver(() => {
   const currentUrl = location.href;
@@ -260,6 +363,8 @@ new MutationObserver(() => {
   }
 }).observe(document, { subtree: true, childList: true });
 
+// 초기 실행
 document.addEventListener('keydown', handleKeyDown);
 video.addEventListener('timeupdate', updateOverlay);
 loadBookmarks();
+setInterval(autoSkipAdsAndShowTimer, 500);
