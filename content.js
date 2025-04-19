@@ -1,20 +1,26 @@
+// ✅ 설정용 변수 (수정 편하게 여기서 관리!)
+let BOOKMARK_MAX_HEIGHT = 750; // bookmark overlay 기본 높이(px)
+let BOOKMARK_TOGGLE_HEIGHT = 500; // bookmark overlay 토글 시 높이(px)
+let MASK_START_RATIO = 0.65; // 비디오 기준 가림 시작 위치 비율
+let MASK_HEIGHT_RATIO = 0.27; // 비디오 기준 가림 높이 비율
+
 let bookmarks = [];
 let enabled = true;
 let overlay;
 let speedOverlay;
+let bottomOverlay;
+let bottomOverlayVisible = false;
 let currentVideoId = '';
 let wasAutoPaused = false;
-let bottomOverlayVisible = false;
-let bottomOverlay = null;
 let currentInterval = null;
 let adTimerOverlay = null;
-let adDarkOverlay = null;
-let skipAttempted = false;
 let wasMutedBeforeAd = false;
 
 const video = document.querySelector('video');
 
+// ----------------------
 // 광고 스킵 기능
+// ----------------------
 function autoSkipAdsAndShowTimer() {
   const adTextElement = document.querySelector('.ytp-ad-text');
   const skipButton = document.querySelector('.ytp-ad-skip-button');
@@ -73,7 +79,9 @@ function autoSkipAdsAndShowTimer() {
   }
 }
 
+// ----------------------
 // 북마크 저장/로드
+// ----------------------
 function getVideoId() {
   return new URLSearchParams(window.location.search).get('v');
 }
@@ -91,7 +99,9 @@ function loadBookmarks() {
   });
 }
 
+// ----------------------
 // 북마크 추가/삭제/초기화
+// ----------------------
 function addBookmark() {
   const time = video.currentTime;
   const existingIndex = bookmarks.findIndex(t => Math.abs(t - time) < 1);
@@ -118,7 +128,9 @@ function clearBookmarks() {
   updateOverlay();
 }
 
-// 북마크 이동 재생
+// ----------------------
+// 북마크 구간 재생 기능
+// ----------------------
 function playSegment(startIndex, stopIndex = startIndex + 1) {
   if (startIndex < 0 || stopIndex >= bookmarks.length) return;
 
@@ -141,7 +153,9 @@ function playSegment(startIndex, stopIndex = startIndex + 1) {
   }, 100);
 }
 
-// 북마크 리스트 오버레이 업데이트
+// ----------------------
+// 북마크 오버레이 업데이트
+// ----------------------
 function highlightCurrentTime(div, time) {
   if (Math.abs(video.currentTime - time) < 1) {
     div.style.background = 'gray';
@@ -161,7 +175,7 @@ function updateOverlay() {
       padding: '10px',
       borderRadius: '10px',
       fontSize: '14px',
-      maxHeight: '750px',
+      maxHeight: `${BOOKMARK_MAX_HEIGHT}px`,
       overflowY: 'auto',
       zIndex: 9999,
     });
@@ -195,7 +209,9 @@ function updateOverlay() {
   });
 }
 
-// 속도 오버레이
+// ----------------------
+// 속도 오버레이 업데이트
+// ----------------------
 function updateSpeedOverlay() {
   const videoElement = document.querySelector('video');
   if (!videoElement) return;
@@ -227,17 +243,66 @@ function updateSpeedOverlay() {
   speedOverlay.style.display = enabled ? 'block' : 'none';
 }
 
-// 전체 켜고 끄기
+// ----------------------
+// 가림 오버레이 업데이트
+// ----------------------
+function updateBottomOverlayPosition() {
+  if (!bottomOverlay || !bottomOverlayVisible) return;
+
+  const videoElement = document.querySelector('.html5-main-video');
+  if (!videoElement) return;
+
+  const rect = videoElement.getBoundingClientRect();
+  const totalHeight = rect.height;
+  const overlayHeight = totalHeight * MASK_HEIGHT_RATIO;
+  const startTop = rect.top + totalHeight * MASK_START_RATIO;
+
+  Object.assign(bottomOverlay.style, {
+    left: `${rect.left}px`,
+    width: `${rect.width}px`,
+    height: `${overlayHeight}px`,
+    top: `${startTop}px`,
+  });
+}
+
+function toggleBottomOverlay() {
+  const videoElement = document.querySelector('.html5-main-video');
+  if (!videoElement) return;
+
+  if (!bottomOverlay) {
+    bottomOverlay = document.createElement('div');
+    bottomOverlay.className = 'custom-bottom-mask';
+    Object.assign(bottomOverlay.style, {
+      position: 'absolute',
+      backgroundColor: 'black',
+      zIndex: '1000',
+      pointerEvents: 'none',
+    });
+    document.body.appendChild(bottomOverlay);
+  }
+
+  bottomOverlayVisible = !bottomOverlayVisible;
+
+  if (bottomOverlayVisible) {
+    updateBottomOverlayPosition();
+    bottomOverlay.style.display = 'block';
+  } else {
+    bottomOverlay.style.display = 'none';
+  }
+}
+
+// ----------------------
+// 키 핸들러
+// ----------------------
 function toggleEnable() {
   enabled = !enabled;
   updateOverlay();
   updateSpeedOverlay();
 }
 
-// 키 입력 핸들링
 function handleKeyDown(e) {
   const key = e.key.toLowerCase();
-  if (!enabled && key !== 'q') return;
+  if (!enabled && key !== 'q' && key !== 'v') return;
 
   switch (key) {
     case 'q':
@@ -260,21 +325,13 @@ function handleKeyDown(e) {
       break;
     case 'x':
       e.preventDefault();
-      if (video.paused) {
-        const currentIndex = bookmarks.findIndex(t => Math.abs(t - video.currentTime) < 1);
-        if (currentIndex !== -1) {
-          playSegment(currentIndex);
-        } else {
-          const prev = [...bookmarks].reverse().find(t => t < video.currentTime);
-          if (prev !== undefined) {
-            const index = bookmarks.findIndex(t => t === prev);
-            playSegment(index);
-          }
-        }
+      const currentIndex = bookmarks.findIndex(t => Math.abs(t - video.currentTime) < 1);
+      if (currentIndex !== -1) {
+        playSegment(currentIndex);
       } else {
-        const next = bookmarks.find(t => t - video.currentTime > -0.2);
-        if (next !== undefined) {
-          const index = bookmarks.findIndex(t => t === next);
+        const prev = [...bookmarks].reverse().find(t => t < video.currentTime);
+        if (prev !== undefined) {
+          const index = bookmarks.findIndex(t => t === prev);
           playSegment(index);
         }
       }
@@ -297,10 +354,25 @@ function handleKeyDown(e) {
       video.playbackRate = Math.min(16.0, (video.playbackRate + 0.1));
       updateSpeedOverlay();
       break;
+    case 'v':
+      toggleBottomOverlay();
+      break;
+    case 'b':
+      e.preventDefault();
+      if (overlay) {
+        if (parseInt(overlay.style.maxHeight) === BOOKMARK_MAX_HEIGHT) {
+          overlay.style.maxHeight = `${BOOKMARK_TOGGLE_HEIGHT}px`;
+        } else {
+          overlay.style.maxHeight = `${BOOKMARK_MAX_HEIGHT}px`;
+        }
+      }
+      break;
   }
 }
 
-// URL 변경 감지 (유튜브 내 네비게이션 대응)
+// ----------------------
+// URL 변경 감지
+// ----------------------
 let lastUrl = location.href;
 new MutationObserver(() => {
   const currentUrl = location.href;
@@ -309,17 +381,24 @@ new MutationObserver(() => {
     setTimeout(() => {
       loadBookmarks();
       updateSpeedOverlay();
+      updateBottomOverlayPosition();
     }, 1000);
   }
 }).observe(document, { subtree: true, childList: true });
 
+// ----------------------
 // 초기화
+// ----------------------
 document.addEventListener('keydown', handleKeyDown);
 video.addEventListener('timeupdate', updateOverlay);
 loadBookmarks();
 updateSpeedOverlay();
 setInterval(autoSkipAdsAndShowTimer, 500);
-
-// 창 리사이즈/풀스크린 변경 대응
-window.addEventListener('resize', updateSpeedOverlay);
-document.addEventListener('fullscreenchange', updateSpeedOverlay);
+window.addEventListener('resize', () => {
+  updateSpeedOverlay();
+  updateBottomOverlayPosition();
+});
+document.addEventListener('fullscreenchange', () => {
+  updateSpeedOverlay();
+  updateBottomOverlayPosition();
+});
