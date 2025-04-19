@@ -1,8 +1,10 @@
-// ✅ 설정용 변수 (수정 편하게 여기서 관리!)
-let BOOKMARK_MAX_HEIGHT = 750; // bookmark overlay 기본 높이(px)
-let BOOKMARK_TOGGLE_HEIGHT = 500; // bookmark overlay 토글 시 높이(px)
-let MASK_START_RATIO = 0.65; // 비디오 기준 가림 시작 위치 비율
-let MASK_HEIGHT_RATIO = 0.27; // 비디오 기준 가림 높이 비율
+// ✅ 설정용 변수
+let BOOKMARK_MAX_HEIGHT = 750;
+let BOOKMARK_TOGGLE_HEIGHT = 500;
+let MASK_START_RATIO_0 = 0.65;
+let MASK_HEIGHT_RATIO_0 = 0.27;
+let MASK_START_RATIO = MASK_START_RATIO_0;
+let MASK_HEIGHT_RATIO = MASK_HEIGHT_RATIO_0;
 
 let bookmarks = [];
 let enabled = true;
@@ -72,7 +74,6 @@ function autoSkipAdsAndShowTimer() {
       adTimerOverlay.remove();
       adTimerOverlay = null;
     }
-
     if (video.muted && !wasMutedBeforeAd) {
       video.muted = false;
     }
@@ -80,23 +81,51 @@ function autoSkipAdsAndShowTimer() {
 }
 
 // ----------------------
-// 북마크 저장/로드
+// 북마크 저장/로드 (localStorage)
 // ----------------------
 function getVideoId() {
   return new URLSearchParams(window.location.search).get('v');
 }
 
 function saveBookmarks() {
-  chrome.storage.local.set({ [currentVideoId]: bookmarks });
+  localStorage.setItem(currentVideoId, JSON.stringify({
+    bookmarks: bookmarks,
+    maskStartRatio: MASK_START_RATIO,
+    maskHeightRatio: MASK_HEIGHT_RATIO,
+  }));
 }
 
 function loadBookmarks() {
   currentVideoId = getVideoId();
-  chrome.storage.local.get([currentVideoId], (result) => {
-    bookmarks = result[currentVideoId] || [];
-    bookmarks.sort((a, b) => a - b);
-    updateOverlay();
-  });
+  const data = localStorage.getItem(currentVideoId);
+
+  if (data) {
+    try {
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed)) {
+        bookmarks = parsed;
+        MASK_START_RATIO = MASK_START_RATIO_0;
+        MASK_HEIGHT_RATIO = MASK_HEIGHT_RATIO_0;
+      } else {
+        bookmarks = parsed.bookmarks || [];
+        MASK_START_RATIO = parsed.maskStartRatio ?? MASK_START_RATIO_0;
+        MASK_HEIGHT_RATIO = parsed.maskHeightRatio ?? MASK_HEIGHT_RATIO_0;
+      }
+    } catch (e) {
+      console.error('데이터 파싱 오류', e);
+      bookmarks = [];
+      MASK_START_RATIO = MASK_START_RATIO_0;
+      MASK_HEIGHT_RATIO = MASK_HEIGHT_RATIO_0;
+    }
+  } else {
+    bookmarks = [];
+    MASK_START_RATIO = MASK_START_RATIO_0;
+    MASK_HEIGHT_RATIO = MASK_HEIGHT_RATIO_0;
+  }
+
+  bookmarks.sort((a, b) => a - b);
+  updateOverlay();
+  updateBottomOverlayPosition();
 }
 
 // ----------------------
@@ -154,7 +183,7 @@ function playSegment(startIndex, stopIndex = startIndex + 1) {
 }
 
 // ----------------------
-// 북마크 오버레이 업데이트
+// 오버레이 업데이트
 // ----------------------
 function highlightCurrentTime(div, time) {
   if (Math.abs(video.currentTime - time) < 1) {
@@ -213,10 +242,7 @@ function updateOverlay() {
 // 속도 오버레이 업데이트
 // ----------------------
 function updateSpeedOverlay() {
-  const videoElement = document.querySelector('video');
-  if (!videoElement) return;
-
-  const rect = videoElement.getBoundingClientRect();
+  const rect = video.getBoundingClientRect();
 
   if (!speedOverlay) {
     speedOverlay = document.createElement('div');
@@ -244,15 +270,12 @@ function updateSpeedOverlay() {
 }
 
 // ----------------------
-// 가림 오버레이 업데이트
+// 가림 오버레이
 // ----------------------
 function updateBottomOverlayPosition() {
   if (!bottomOverlay || !bottomOverlayVisible) return;
 
-  const videoElement = document.querySelector('.html5-main-video');
-  if (!videoElement) return;
-
-  const rect = videoElement.getBoundingClientRect();
+  const rect = video.getBoundingClientRect();
   const totalHeight = rect.height;
   const overlayHeight = totalHeight * MASK_HEIGHT_RATIO;
   const startTop = rect.top + totalHeight * MASK_START_RATIO;
@@ -266,8 +289,7 @@ function updateBottomOverlayPosition() {
 }
 
 function toggleBottomOverlay() {
-  const videoElement = document.querySelector('.html5-main-video');
-  if (!videoElement) return;
+  const rect = video.getBoundingClientRect();
 
   if (!bottomOverlay) {
     bottomOverlay = document.createElement('div');
@@ -346,12 +368,12 @@ function handleKeyDown(e) {
       break;
     case ',':
       e.preventDefault();
-      video.playbackRate = Math.max(0.1, (video.playbackRate - 0.1));
+      video.playbackRate = Math.max(0.1, video.playbackRate - 0.1);
       updateSpeedOverlay();
       break;
     case '.':
       e.preventDefault();
-      video.playbackRate = Math.min(16.0, (video.playbackRate + 0.1));
+      video.playbackRate = Math.min(16.0, video.playbackRate + 0.1);
       updateSpeedOverlay();
       break;
     case 'v':
@@ -366,6 +388,37 @@ function handleKeyDown(e) {
           overlay.style.maxHeight = `${BOOKMARK_MAX_HEIGHT}px`;
         }
       }
+      break;
+    case '[':
+      e.preventDefault();
+      MASK_START_RATIO = Math.max(0, MASK_START_RATIO - 0.01);
+      updateBottomOverlayPosition();
+      saveBookmarks();
+      break;
+    case ']':
+      e.preventDefault();
+      MASK_START_RATIO = Math.min(1 - MASK_HEIGHT_RATIO, MASK_START_RATIO + 0.01);
+      updateBottomOverlayPosition();
+      saveBookmarks();
+      break;
+    case ';':
+      e.preventDefault();
+      MASK_HEIGHT_RATIO = Math.max(0.01, MASK_HEIGHT_RATIO - 0.01);
+      updateBottomOverlayPosition();
+      saveBookmarks();
+      break;
+    case "'":
+      e.preventDefault();
+      MASK_HEIGHT_RATIO = Math.min(1 - MASK_START_RATIO, MASK_HEIGHT_RATIO + 0.01);
+      updateBottomOverlayPosition();
+      saveBookmarks();
+      break;
+    case 'p':
+      e.preventDefault();
+      MASK_START_RATIO = MASK_START_RATIO_0;
+      MASK_HEIGHT_RATIO = MASK_HEIGHT_RATIO_0;
+      updateBottomOverlayPosition();
+      saveBookmarks();
       break;
   }
 }
