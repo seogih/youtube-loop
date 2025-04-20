@@ -18,6 +18,7 @@ let currentInterval = null;
 let adTimerOverlay = null;
 let wasMutedBeforeAd = false;
 let video = null;
+let speedOverlayTimeout = null;
 
 // const video = document.querySelector('video');
 
@@ -70,8 +71,9 @@ function setupEventListeners() {
 function autoSkipAdsAndShowTimer() {
   const adTextElement = document.querySelector('.ytp-ad-text');
   const skipButton = document.querySelector('.ytp-ad-skip-button');
+  const adShowing = document.querySelector('.ytp-ad-player-overlay') || document.querySelector('.ad-showing');
 
-  if (document.querySelector('.ytp-ad-player-overlay') || document.querySelector('.ad-showing')) {
+  if (adShowing) {
     if (!adTimerOverlay) {
       adTimerOverlay = document.createElement('div');
       Object.assign(adTimerOverlay.style, {
@@ -91,11 +93,13 @@ function autoSkipAdsAndShowTimer() {
       document.body.appendChild(adTimerOverlay);
     }
 
-    let adTimeText = '';
     if (adTextElement) {
-      adTimeText = adTextElement.innerText;
+      adTimerOverlay.textContent = `광고 진행 중... ${adTextElement.innerText} (곧 스킵됩니다)`;
     }
-    adTimerOverlay.textContent = `광고 진행 중... ${adTimeText} (곧 스킵됩니다)`;
+
+    if (overlay) {
+      overlay.style.display = 'none';  // 광고 중이면 bookmark 숨기기
+    }
 
     if (!video.muted) {
       wasMutedBeforeAd = false;
@@ -117,6 +121,9 @@ function autoSkipAdsAndShowTimer() {
     if (adTimerOverlay) {
       adTimerOverlay.remove();
       adTimerOverlay = null;
+    }
+    if (overlay) {
+      overlay.style.display = enabled ? 'block' : 'none';  // 광고 끝나면 bookmark 다시 보여줌
     }
     if (video.muted && !wasMutedBeforeAd) {
       video.muted = false;
@@ -258,9 +265,15 @@ function updateOverlay() {
   overlay.innerHTML = '';
   overlay.style.display = enabled ? 'block' : 'none';
 
+  const isFullscreen = !!document.fullscreenElement;
+
   bookmarks.forEach((time, i) => {
     const div = document.createElement('div');
-    div.textContent = `${i + 1}. ${new Date(time * 1000).toISOString().substr(11, 8)}`;
+    if (isFullscreen) {
+      div.textContent = `${i + 1}.`;
+    } else {
+      div.textContent = `${i + 1}. ${new Date(time * 1000).toISOString().substr(11, 8)}`;
+    }
     div.style.cursor = 'pointer';
     div.style.margin = '4px 0';
     highlightCurrentTime(div, time);
@@ -300,6 +313,7 @@ function updateSpeedOverlay() {
       fontSize: '16px',
       zIndex: 9999,
       pointerEvents: 'none',
+      display: 'none',  // 기본은 숨김
     });
     document.body.appendChild(speedOverlay);
   }
@@ -310,7 +324,18 @@ function updateSpeedOverlay() {
   });
 
   speedOverlay.textContent = `속도: ${video.playbackRate.toFixed(1)}x`;
-  speedOverlay.style.display = enabled ? 'block' : 'none';
+}
+
+function showSpeedOverlayTemporarily() {
+  if (!enabled) return;
+
+  updateSpeedOverlay();
+  speedOverlay.style.display = 'block';
+
+  if (speedOverlayTimeout) clearTimeout(speedOverlayTimeout);
+  speedOverlayTimeout = setTimeout(() => {
+    speedOverlay.style.display = 'none';
+  }, 2000); // 2초 후 숨김
 }
 
 // ----------------------
@@ -413,12 +438,12 @@ function handleKeyDown(e) {
     case ',':
       e.preventDefault();
       video.playbackRate = Math.max(0.1, video.playbackRate - 0.1);
-      updateSpeedOverlay();
+      showSpeedOverlayTemporarily();
       break;
     case '.':
       e.preventDefault();
       video.playbackRate = Math.min(16.0, video.playbackRate + 0.1);
-      updateSpeedOverlay();
+      showSpeedOverlayTemporarily();
       break;
     case 'v':
       toggleBottomOverlay();
